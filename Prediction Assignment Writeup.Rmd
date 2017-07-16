@@ -1,0 +1,130 @@
+---
+title: "Practical Machine Learning - Prediction Assignment Writeup"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+##Synopsis
+The data for this project was kindly provided from this source: http://groupware.les.inf.puc-rio.br/har. According to the site description, the dataset recorded "Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E)." The objective of the assignment is using the dataset to answer the following questions:
+
+1. How you built your model.
+2. How you used cross validation.
+3. What you think the expected out of sample error is.
+4. Why you made the choices you did. 
+5. Use your prediction model to predict 20 different test cases.
+
+Reference: 
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+##Preparation,Download Data
+
+```{r, warning=FALSE}
+library(AppliedPredictiveModeling)
+library(caret)
+library(rpart.plot)
+library(randomForest)
+
+url_train<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_test<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+train<-read.csv(url_train)
+test<-read.csv((url_test))
+dim(train)
+dim(test)
+```
+
+##Cleaning
+Since the train set has many NA values among 160 variables, we are going to remove those variables along with near zero variance and ID variables (column 1 to 5) by the procedure below.
+
+```{r}
+nzv <- nearZeroVar(train)
+train <- train[, -nzv]
+dim(train)
+allNa<- sapply(train, function(x) mean(is.na(x))) > 0.95
+train <- train[, allNa==FALSE]
+dim(train)
+train<-train[,-(1:5)]
+dim(train)
+```
+
+##Data Partition
+Since test dataset only has 20 observations for the quiz, the train set will be splited into trainingset to build the model and testingset for the model evaluation.
+
+```{r}
+set.seed(3251)
+train_split <- createDataPartition(y=train$classe, p=0.7, list=FALSE)
+trainingset <- train[train_split, ]
+testingset <- train[-train_split, ]
+dim(trainingset)
+dim(testingset)
+```
+
+##Model Building
+For the project, 3 differnt model algorithms will be applied as in the course and then the accuracy of the models will be compared to see which model providing the best accuracty with basic parameters. The three model used are:
+
+1.Decision trees (rpart)
+
+```{r}
+set.seed(111)
+modFit_rpart <- train(classe ~ ., data=trainingset, method="rpart")
+predict_rpart<- predict(modFit_rpart, newdata=testingset)
+confMatrix_rpart <- confusionMatrix(predict_rpart, testingset$classe)
+confMatrix_rpart
+```
+
+2.Gradient boosting trees (gbm)
+
+```{r gbm, include=FALSE}
+set.seed(222)
+modFit_gbm <- train(classe ~ ., data=trainingset, method="gbm")
+predict_gbm<- predict(modFit_gbm, newdata=testingset)
+confMatrix_gbm <- confusionMatrix(predict_gbm, testingset$classe)
+```
+
+```{r, echo=TRUE}
+confMatrix_gbm
+```
+
+3.Random forest trees (rf)
+
+```{r}
+set.seed(333)
+modFit_rf <- train(classe ~ ., data=trainingset, method="rf")
+predict_rf<- predict(modFit_rf, newdata=testingset)
+confMatrix_rf <- confusionMatrix(predict_rf, testingset$classe)
+confMatrix_rf
+```
+Among the three models accuracy rate (0.5517, 0.9867 and 0.9976), the random forest algorithm gives the best accuracy.
+
+
+##Cross Validation
+The cross validation option was applied to the models to check for any improvement on accuracy. The result with random forest model is listed below: 
+
+```{r}
+set.seed(333)
+modFit_rfcv <- train(classe ~ ., method="rf", preProcess=c("center", "scale"), trControl=trainControl(method = "cv", number = 4), data=trainingset)
+predict_rfcv<- predict(modFit_rfcv, newdata=testingset)
+confMatrix_rfcv <- confusionMatrix(predict_rfcv, testingset$classe)
+confMatrix_rfcv
+```
+
+
+A little improvement has been seen with gradient boosting trees model (not shown) with accuracy from 0.9867 to 0.9878. With random forest model, the accuracy remain the same with a little adjustment with class classification. I'll use the model with cross validation to predict the test quiz even if no accuracy improvement.
+
+##Out of Sample Error
+
+The sample error rate will be 1-accuracy rate=1-0.9976=0.0024
+
+##Predictions on Test Set
+We'll use random forest model without or with cross validation to predict the test quiz data. The result are:
+```{r}
+predict_rfno<- predict(modFit_rf, newdata=test)
+predict_rftest<- predict(modFit_rfcv, newdata=test)
+predict_rfno
+predict_rftest
+```
+
+##Conclusion
+We tested different models on the trainingset to build the models, then test the model on the splitted testingset data to evaluate the model. Among the three models (decision trees, gradient boosting trees and random forest trees), the random forest tree model gave pretty high overall accuracy rate. The error rate is only 2.4%. The cross validation method didn't improve the accuracy rate, but does adjust the class classification a little. So we just choose the final random forest model with cross validation model to make the prediction on the test quiz data set.  
+
